@@ -95,19 +95,23 @@ Models annotated with `@freezed` or `@JsonSerializable` have generated `.freezed
 Build per-architecture APKs locally and deploy directly — do not use GitHub Actions for releases.
 
 ```bash
-# 1. Bump version in pubspec.yaml (e.g. 2.7.1+117)
+# 1. Fetch and merge upstream
+git fetch upstream
+git merge upstream/main --allow-unrelated-histories --no-edit
 
-# 2. Build (produces separate APKs per ABI)
+# 2. Bump version in pubspec.yaml (e.g. 2.7.1+117)
+
+# 3. Build (produces separate APKs per ABI)
 flutter build apk --release --split-per-abi
 
-# 3. Push APKs to test devices
+# 4. Push APKs to test devices
 ADB=/opt/android-sdk/platform-tools/adb
 $ADB -s <device-ip>  install -r build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 $ADB -s <device-ip>  install -r build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
 $ADB -s <device-ip>  install -r build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
 $ADB -s <device-ip> install -r build/app/outputs/flutter-apk/app-x86_64-release.apk
 
-# 4. Copy APKs to web server and update manifest
+# 5. Copy APKs to web server and update manifest
 #    (paths are in .claude/deploy-paths.md — local only, not committed)
 
 # 6. Commit and push to fork
