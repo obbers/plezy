@@ -111,7 +111,6 @@ cp build/app/outputs/flutter-apk/app-x86_64-release.apk <deploy-path>
 }
 ```
 
-
 ## Code style
 
 - Line width: 120 characters (configured in `analysis_options.yaml` and enforced by `dart format`)
