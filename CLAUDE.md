@@ -83,16 +83,18 @@ Models annotated with `@freezed` or `@JsonSerializable` have generated `.freezed
 
 ## Release process (Android)
 
-Build a fat APK locally and deploy it directly — do not use GitHub Actions for releases.
+Build per-architecture APKs locally and deploy directly — do not use GitHub Actions for releases.
 
 ```bash
 # 1. Bump version in pubspec.yaml (e.g. 2.6.1+113)
 
-# 2. Build
-flutter build apk --release
+# 2. Build (produces separate APKs per ABI)
+flutter build apk --release --split-per-abi
 
-# 3. Copy APK
-cp build/app/outputs/flutter-apk/app-release.apk <deploy-path>
+# 3. Copy APKs
+cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk <deploy-path>
+cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk <deploy-path>
+cp build/app/outputs/flutter-apk/app-x86_64-release.apk <deploy-path>
 
 # 4. Update <deploy-path>
 #    Set "version" to the new pubspec version string (e.g. "2.6.1+113")
@@ -108,6 +110,7 @@ cp build/app/outputs/flutter-apk/app-release.apk <deploy-path>
   "published_at": "<UTC ISO 8601>"
 }
 ```
+
 
 ## Code style
 
