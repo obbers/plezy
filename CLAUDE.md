@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Environment
+
+Prepend these to `PATH` before running any build or device commands:
+
+```
+/opt/flutter/bin
+/opt/android-sdk/platform-tools
+```
+
 ## Commands
 
 ```bash
