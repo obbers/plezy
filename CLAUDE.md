@@ -107,29 +107,13 @@ $ADB -s <device-ip>  install -r build/app/outputs/flutter-apk/app-armeabi-v7a-re
 $ADB -s <device-ip>  install -r build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
 $ADB -s <device-ip> install -r build/app/outputs/flutter-apk/app-x86_64-release.apk
 
-# 4. Copy APKs to web server
-cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk <deploy-path>
-cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk <deploy-path>
-cp build/app/outputs/flutter-apk/app-x86_64-release.apk <deploy-path>
-
-# 5. Update <deploy-path>
-#    Set "version" to the new pubspec version string (e.g. "2.7.1+117")
-#    Set "published_at" to current UTC time in ISO 8601 format
-#    Leave "count" unchanged
+# 4. Copy APKs to web server and update manifest
+#    (paths are in .claude/deploy-paths.md — local only, not committed)
 
 # 6. Commit and push to fork
 git add pubspec.yaml
 git commit -m "chore: bump version to <version>"
 git push origin main
-```
-
-`plezy.json` shape:
-```json
-{
-  "count": <leave unchanged>,
-  "version": "<versionName>+<versionCode>",
-  "published_at": "<UTC ISO 8601>"
-}
 ```
 
 Test device addresses and ABI mappings are in `.claude/test-devices.md` (local only, not committed).
