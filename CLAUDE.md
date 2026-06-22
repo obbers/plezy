@@ -95,20 +95,32 @@ Models annotated with `@freezed` or `@JsonSerializable` have generated `.freezed
 Build per-architecture APKs locally and deploy directly — do not use GitHub Actions for releases.
 
 ```bash
-# 1. Bump version in pubspec.yaml (e.g. 2.6.1+113)
+# 1. Bump version in pubspec.yaml (e.g. 2.7.1+117)
 
 # 2. Build (produces separate APKs per ABI)
 flutter build apk --release --split-per-abi
 
-# 3. Copy APKs
+# 3. Push APKs to test devices
+ADB=/opt/android-sdk/platform-tools/adb
+$ADB -s <device-ip>  install -r build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+$ADB -s <device-ip>  install -r build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+$ADB -s <device-ip>  install -r build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+$ADB -s <device-ip> install -r build/app/outputs/flutter-apk/app-x86_64-release.apk
+
+# 4. Copy APKs to web server
 cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk <deploy-path>
 cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk <deploy-path>
 cp build/app/outputs/flutter-apk/app-x86_64-release.apk <deploy-path>
 
-# 4. Update <deploy-path>
-#    Set "version" to the new pubspec version string (e.g. "2.6.1+113")
+# 5. Update <deploy-path>
+#    Set "version" to the new pubspec version string (e.g. "2.7.1+117")
 #    Set "published_at" to current UTC time in ISO 8601 format
 #    Leave "count" unchanged
+
+# 6. Commit and push to fork
+git add pubspec.yaml
+git commit -m "chore: bump version to <version>"
+git push origin main
 ```
 
 `plezy.json` shape:
@@ -119,6 +131,12 @@ cp build/app/outputs/flutter-apk/app-x86_64-release.apk <deploy-path>
   "published_at": "<UTC ISO 8601>"
 }
 ```
+
+Test devices:
+- `<device-ip>` — Shield TV 2017 → arm64-v8a
+- `<device-ip>` — Shield TV 2019 Tube → armeabi-v7a
+- `<device-ip>` — Onn stick → armeabi-v7a
+- `<device-ip>` — WSA (Windows) → x86_64
 
 ## Code style
 
