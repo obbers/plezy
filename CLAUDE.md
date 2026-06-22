@@ -132,11 +132,7 @@ git push origin main
 }
 ```
 
-Test devices:
-- `<device-ip>` — Shield TV 2017 → arm64-v8a
-- `<device-ip>` — Shield TV 2019 Tube → armeabi-v7a
-- `<device-ip>` — Onn stick → armeabi-v7a
-- `<device-ip>` — WSA (Windows) → x86_64
+Test device addresses and ABI mappings are in `.claude/test-devices.md` (local only, not committed).
 
 ## Code style
 
