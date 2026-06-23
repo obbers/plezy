@@ -32,6 +32,7 @@ import '../navigation/profile_navigation_scope.dart';
 import '../profiles/active_profile_binder.dart';
 import '../profiles/active_profile_provider.dart';
 import '../profiles/plex_home_service.dart';
+import '../providers/discover_provider.dart';
 import '../providers/download_provider.dart';
 import '../providers/multi_server_provider.dart';
 import '../providers/hidden_libraries_provider.dart';
@@ -432,7 +433,17 @@ class _MainScreenState extends State<MainScreen>
 
     if (!mounted) return;
     if (_discoverKey.currentState case final FullRefreshable refreshable) {
-      refreshable.fullRefresh();
+      // On a reconnect after a brief connection drop the discover data is still
+      // valid. Forcing a fullRefresh() would reset the hero carousel and show a
+      // spinner unnecessarily. Only do a full reload when discover hasn't
+      // successfully loaded yet (initial startup, error, or after clear()).
+      // syncToOnlineServers handles newly-online servers via delta loads.
+      final discover = context.read<DiscoverProvider>();
+      if (discover.isLoading || discover.areHubsLoading || discover.errorMessage != null) {
+        refreshable.fullRefresh();
+      } else if (_discoverKey.currentState case final Refreshable r) {
+        r.refresh();
+      }
     }
     if (_librariesKey.currentState case final FullRefreshable refreshable) {
       refreshable.fullRefresh();
@@ -1264,6 +1275,7 @@ class _MainScreenState extends State<MainScreen>
     final multiServerProvider = context.read<MultiServerProvider>();
     final hiddenLibrariesProvider = context.read<HiddenLibrariesProvider>();
     final librariesProvider = context.read<LibrariesProvider>();
+    final discoverProvider = context.read<DiscoverProvider>();
     final playbackStateProvider = context.read<PlaybackStateProvider>();
 
     // Drop volatile API cache rows before screens kick off their refetch.
@@ -1275,6 +1287,7 @@ class _MainScreenState extends State<MainScreen>
     }
 
     librariesProvider.clear();
+    discoverProvider.clear();
 
     if (multiServerProvider.serverManager.serverIds.isNotEmpty) {
       if (!mounted) return;

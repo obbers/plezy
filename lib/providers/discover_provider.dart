@@ -514,6 +514,23 @@ class DiscoverProvider extends ChangeNotifier with DisposableChangeNotifierMixin
     throw Exception('No owning client available for $serverId');
   }
 
+  /// Reset all loaded data and state so the next [load] performs a full fetch.
+  /// Called by [_invalidateAllScreens] after a profile rebind so that
+  /// [fullRefresh] knows a real reload is required (not just a CW refresh).
+  void clear() {
+    _onDeck = [];
+    _hubs = [];
+    _hasMoreContinueWatching = false;
+    _onDeckState = DiscoverLoadState.initial;
+    _hubsState = DiscoverLoadState.initial;
+    _errorMessage = null;
+    _loadedOnDeckServerIds = {};
+    _loadedHubServerIds = {};
+    _hasPendingLoad = false;
+    _pendingDeltaServerIds.clear();
+    safeNotifyListeners();
+  }
+
   @override
   void dispose() {
     _multiServer.removeOnlineServersListener(syncToOnlineServers);

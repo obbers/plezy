@@ -1032,6 +1032,14 @@ class MultiServerManager {
       final jellyfinClient = jellyfinCompoundId != null ? _jellyfinByCompoundId[jellyfinCompoundId] : null;
       if (plexServer == null && jellyfinClient == null) return;
 
+      // If the server came back online during the debounce window (e.g. Wi-Fi
+      // reconnected within 5 s), skip the offline flip — marking it offline
+      // now would cause a spurious offline→online cycle in OfflineModeProvider.
+      if (isServerOnline(serverId)) {
+        appLogger.d('Endpoints-exhausted debounce: $serverId already back online, skipping offline flip');
+        return;
+      }
+
       appLogger.i('All endpoints exhausted for $serverId, triggering reconnection');
       updateServerStatus(serverId, false);
 
