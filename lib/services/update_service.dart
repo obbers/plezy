@@ -83,7 +83,10 @@ class UpdateService {
 
     try {
       final packageInfo = await PackageInfo.fromPlatform();
-      final buildNumber = packageInfo.buildNumber;
+      // Flutter's split-per-abi versionCode = ABI_FACTOR * 1000 + build_number.
+      // Strip the ABI offset to recover the real build number.
+      final rawCode = int.tryParse(packageInfo.buildNumber) ?? 0;
+      final buildNumber = rawCode > 0 ? (rawCode % 1000).toString() : packageInfo.buildNumber;
       final currentVersion =
           buildNumber.isNotEmpty ? '${packageInfo.version}+$buildNumber' : packageInfo.version;
 
