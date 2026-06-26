@@ -18,7 +18,11 @@ class AboutScreen extends StatelessWidget {
     return FutureBuilder<PackageInfo>(
       future: _packageInfoFuture,
       builder: (context, snapshot) {
-        final appVersion = snapshot.data?.version ?? '';
+        final info = snapshot.data;
+        final buildNumber = info?.buildNumber;
+        final appVersion = info != null
+            ? (buildNumber != null && buildNumber.isNotEmpty ? '${info.version}+$buildNumber' : info.version)
+            : '';
         return FocusedScrollScaffold(
           title: Text(t.about.title),
           slivers: [

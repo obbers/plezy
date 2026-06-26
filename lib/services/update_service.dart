@@ -1,21 +1,16 @@
 import 'dart:io';
 
-import 'package:auto_updater/auto_updater.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:logger/logger.dart';
 import 'package:plezy/utils/media_server_http_client.dart';
 import 'base_shared_preferences_service.dart';
 
-/// Service to check for new versions on GitHub
-/// Only enabled when ENABLE_UPDATE_CHECK build flag is set
-///
-/// On macOS (non-Homebrew) and installed Windows: delegates to Sparkle/WinSparkle
-/// via auto_updater for native update dialogs and in-app installs.
-/// On all other platforms: falls back to GitHub API check + browser link dialog.
+/// Service to check for new versions from the self-hosted update server.
+/// Only enabled when ENABLE_UPDATE_CHECK build flag is set.
 class UpdateService {
   static final Logger _logger = Logger();
-  static const String _githubRepo = 'edde746/plezy';
-  static const String _feedUrl = 'https://cdn.jsdelivr.net/gh/edde746/plezy@appcast/appcast.xml';
+  static const String _updateBaseUrl = 'https://swag.obs1.duckdns.org';
+  static const String _manifestUrl = '$_updateBaseUrl/plezy.json';
 
   static const String _keySkippedVersion = 'update_skipped_version';
   static const String _keyLastCheckTime = 'update_last_check_time';
@@ -23,80 +18,26 @@ class UpdateService {
   // Check cooldown: 6 hours
   static const Duration _checkCooldown = Duration(hours: 6);
 
-  static bool _nativeUpdaterInitialized = false;
-
   /// Check if update checking is enabled via build flag
   static bool get isUpdateCheckEnabled {
     return const bool.fromEnvironment('ENABLE_UPDATE_CHECK', defaultValue: false);
   }
 
-  /// Whether the native auto_updater (Sparkle/WinSparkle) should be used.
-  /// True on macOS (non-Homebrew) and installed Windows (has uninstaller).
-  static bool get useNativeUpdater {
-    if (!isUpdateCheckEnabled) return false;
-    if (Platform.isMacOS) return !_isHomebrewInstall();
-    if (Platform.isWindows) return _isInstalledApp() && !_isWingetInstall();
-    return false;
-  }
+  /// Native updater is not used — always false.
+  static bool get useNativeUpdater => false;
 
-  /// Initialize the native auto_updater (Sparkle/WinSparkle).
-  /// Call once at startup if [useNativeUpdater] is true.
-  static Future<void> initNativeUpdater() async {
-    if (_nativeUpdaterInitialized) return;
+  /// No-op kept for call-site compatibility.
+  static Future<void> checkForUpdatesNative({bool inBackground = true}) async {}
 
+  /// Determine the APK download URL for the current device ABI.
+  static Future<String> _apkUrl() async {
     try {
-      await autoUpdater.setFeedURL(_feedUrl);
-      _nativeUpdaterInitialized = true;
-    } catch (e) {
-      _logger.e('Failed to initialize native auto updater: $e');
-    }
-  }
-
-  /// Trigger a background update check via Sparkle/WinSparkle.
-  /// Only shows UI if an update is found.
-  static Future<void> checkForUpdatesNative({bool inBackground = true}) async {
-    if (!_nativeUpdaterInitialized) {
-      await initNativeUpdater();
-      if (!_nativeUpdaterInitialized) return;
-    }
-    try {
-      await autoUpdater.checkForUpdates(inBackground: inBackground);
-    } catch (e) {
-      _logger.e('Native update check failed: $e');
-    }
-  }
-
-  /// Check if the macOS app was installed via Homebrew.
-  /// Homebrew casks live under /opt/homebrew/Caskroom/ or /usr/local/Caskroom/.
-  static bool _isHomebrewInstall() {
-    try {
-      final execPath = Platform.resolvedExecutable;
-      return execPath.contains('/Caskroom/') || execPath.contains('/homebrew/');
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// Check if the Windows app was installed via winget.
-  /// The Inno Setup installer writes a .winget marker file when invoked with /WINGET=1.
-  static bool _isWingetInstall() {
-    try {
-      final exeDir = File(Platform.resolvedExecutable).parent.path;
-      return File('$exeDir\\.winget').existsSync();
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// Check if the Windows app is an installed copy (not portable).
-  /// The Inno Setup installer places unins000.exe next to the executable.
-  static bool _isInstalledApp() {
-    try {
-      final exeDir = File(Platform.resolvedExecutable).parent.path;
-      return File('$exeDir\\unins000.exe').existsSync();
-    } catch (_) {
-      return false;
-    }
+      final result = await Process.run('getprop', ['ro.product.cpu.abi']);
+      final abi = result.stdout.toString().trim();
+      if (abi.contains('x86_64')) return '$_updateBaseUrl/plezy-x86_64.apk';
+      if (abi.contains('arm64')) return '$_updateBaseUrl/plezy-arm64.apk';
+    } catch (_) {}
+    return '$_updateBaseUrl/plezy-armv7.apk';
   }
 
   static Future<void> skipVersion(String version) async {
@@ -133,68 +74,45 @@ class UpdateService {
     await prefs.setString(_keyLastCheckTime, DateTime.now().toIso8601String());
   }
 
-  /// Internal method that performs the actual update check
-  /// [respectCooldown] - if true, checks cooldown and updates last check time
+  /// Internal method that performs the actual update check.
+  /// [respectCooldown] - if true, checks cooldown and updates last check time.
   static Future<Map<String, dynamic>?> _performUpdateCheck({required bool respectCooldown}) async {
-    if (!isUpdateCheckEnabled) {
-      return null;
-    }
+    if (!isUpdateCheckEnabled) return null;
 
-    // Check cooldown if requested
-    if (respectCooldown && !await shouldCheckForUpdates()) {
-      return null;
-    }
+    if (respectCooldown && !await shouldCheckForUpdates()) return null;
 
     try {
       final packageInfo = await PackageInfo.fromPlatform();
-      final currentVersion = packageInfo.version;
+      final buildNumber = packageInfo.buildNumber;
+      final currentVersion =
+          buildNumber.isNotEmpty ? '${packageInfo.version}+$buildNumber' : packageInfo.version;
 
-      final response = await httpClient.get(
-        'https://api.github.com/repos/$_githubRepo/releases/latest',
-        headers: {'Accept': 'application/vnd.github+json'},
-      );
+      final response = await httpClient.get(_manifestUrl);
 
       if (response.statusCode == 200) {
         final data = response.data;
-        final latestVersion = data['tag_name'] as String;
+        final latestVersion = data['version'] as String;
 
-        // Remove 'v' prefix if present
-        final cleanVersion = latestVersion.startsWith('v') ? latestVersion.substring(1) : latestVersion;
-
-        final hasUpdate = _isNewerVersion(cleanVersion, currentVersion);
-
-        if (hasUpdate) {
-          // Check if this version was skipped
+        if (_isNewerVersion(latestVersion, currentVersion)) {
           final skippedVersion = await getSkippedVersion();
-          if (skippedVersion == cleanVersion) {
-            // Update last check time even when skipped (if respecting cooldown)
-            if (respectCooldown) {
-              await _updateLastCheckTime();
-            }
+          if (skippedVersion == latestVersion) {
+            if (respectCooldown) await _updateLastCheckTime();
             return null;
           }
 
-          // Update last check time on success (if respecting cooldown)
-          if (respectCooldown) {
-            await _updateLastCheckTime();
-          }
+          if (respectCooldown) await _updateLastCheckTime();
 
           return {
             'hasUpdate': true,
             'currentVersion': currentVersion,
-            'latestVersion': cleanVersion,
-            'releaseUrl': data['html_url'] as String,
-            'releaseName': data['name'] as String? ?? 'Version $cleanVersion',
-            'releaseNotes': data['body'] as String? ?? '',
-            'publishedAt': data['published_at'] as String,
+            'latestVersion': latestVersion,
+            'releaseUrl': await _apkUrl(),
+            'publishedAt': data['published_at'] as String? ?? '',
           };
         }
       }
 
-      // Update last check time even when no update (if respecting cooldown)
-      if (respectCooldown) {
-        await _updateLastCheckTime();
-      }
+      if (respectCooldown) await _updateLastCheckTime();
     } catch (e) {
       _logger.e('Failed to check for updates: $e');
     }
@@ -214,34 +132,31 @@ class UpdateService {
     return _performUpdateCheck(respectCooldown: true);
   }
 
-  /// Parse version string into list of integers
-  /// Handles versions like "1.2.3+4" by taking only the numeric parts
-  static List<int> _parseVersionParts(String version) {
-    return version.split('.').map((p) {
-      final numPart = p.split('+').first.split('-').first;
-      return int.tryParse(numPart) ?? 0;
-    }).toList();
+  /// Split "1.2.3+4" into semver parts [1,2,3] and build number 4.
+  static ({List<int> parts, int build}) _parseVersion(String version) {
+    final plusIdx = version.indexOf('+');
+    final semver = plusIdx >= 0 ? version.substring(0, plusIdx) : version;
+    final buildStr = plusIdx >= 0 ? version.substring(plusIdx + 1) : '0';
+    final parts = semver.split('.').map((p) => int.tryParse(p.split('-').first) ?? 0).toList();
+    return (parts: parts, build: int.tryParse(buildStr) ?? 0);
   }
 
-  /// Compare two version strings
-  /// Returns true if newVersion is newer than currentVersion
+  /// Returns true if [newVersion] is strictly newer than [currentVersion].
+  /// Compares semver first; falls back to build number when semver is equal.
   static bool _isNewerVersion(String newVersion, String currentVersion) {
     try {
-      final newParts = _parseVersionParts(newVersion);
-      final currentParts = _parseVersionParts(currentVersion);
+      final n = _parseVersion(newVersion);
+      final c = _parseVersion(currentVersion);
 
-      // Compare each part
-      final maxLength = newParts.length > currentParts.length ? newParts.length : currentParts.length;
-
-      for (int i = 0; i < maxLength; i++) {
-        final newPart = i < newParts.length ? newParts[i] : 0;
-        final currentPart = i < currentParts.length ? currentParts[i] : 0;
-
-        if (newPart > currentPart) return true;
-        if (newPart < currentPart) return false;
+      final maxLen = n.parts.length > c.parts.length ? n.parts.length : c.parts.length;
+      for (int i = 0; i < maxLen; i++) {
+        final np = i < n.parts.length ? n.parts[i] : 0;
+        final cp = i < c.parts.length ? c.parts[i] : 0;
+        if (np > cp) return true;
+        if (np < cp) return false;
       }
 
-      return false;
+      return n.build > c.build;
     } catch (e) {
       _logger.e('Error comparing versions: $e');
       return false;
