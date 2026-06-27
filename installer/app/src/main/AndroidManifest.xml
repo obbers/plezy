@@ -12,7 +12,6 @@
         <activity
             android:name=".InstallerActivity"
             android:exported="true"
-            android:noHistory="true"
             android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
