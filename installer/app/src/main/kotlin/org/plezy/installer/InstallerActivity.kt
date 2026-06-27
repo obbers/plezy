@@ -15,6 +15,10 @@ import java.io.File
 
 class InstallerActivity : Activity() {
 
+    companion object {
+        private const val KEY_DOWNLOAD_ID = "download_id"
+    }
+
     private var downloadId = -1L
 
     private val receiver = object : BroadcastReceiver() {
@@ -29,8 +33,10 @@ class InstallerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val url = apkUrlForAbi(Build.SUPPORTED_ABIS[0])
-        downloadId = enqueueDownload(url)
+        if (savedInstanceState != null) {
+            downloadId = savedInstanceState.getLong(KEY_DOWNLOAD_ID, -1L)
+        }
+        // Register receiver before enqueuing to avoid lost-broadcast window
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(
                 receiver,
@@ -41,7 +47,15 @@ class InstallerActivity : Activity() {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
         }
+        if (downloadId == -1L) {
+            downloadId = enqueueDownload(apkUrlForAbi(Build.SUPPORTED_ABIS[0]))
+        }
         // Activity stays alive (invisible) while download progresses.
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putLong(KEY_DOWNLOAD_ID, downloadId)
     }
 
     private fun enqueueDownload(url: String): Long {
@@ -55,21 +69,21 @@ class InstallerActivity : Activity() {
 
     private fun triggerInstall(id: Long) {
         val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
-        val cursor = dm.query(DownloadManager.Query().setFilterById(id))
-        if (cursor.moveToFirst()) {
-            val statusIdx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
-            if (cursor.getInt(statusIdx) == DownloadManager.STATUS_SUCCESSFUL) {
-                val file = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "plezy.apk")
-                val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
-                startActivity(
-                    Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-                        data = uri
-                        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                )
+        dm.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
+            if (cursor.moveToFirst()) {
+                val statusIdx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                if (cursor.getInt(statusIdx) == DownloadManager.STATUS_SUCCESSFUL) {
+                    val file = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "plezy.apk")
+                    val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+                    startActivity(
+                        Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+                            data = uri
+                            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                    )
+                }
             }
         }
-        cursor.close()
     }
 
     override fun onDestroy() {
